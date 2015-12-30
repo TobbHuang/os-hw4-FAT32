@@ -8,6 +8,7 @@
 #include <fcntl.h>
 
 int read_n_bytes(int fp, void *dest, int offset, int num_bytes);
+int write_n_bytes(int fp, void *buf, int num_bytes, int offset);
 void readFAT(unsigned char* buffer,int start,int size,int fp);
 int readData(unsigned char* source,int size);
 void hexDump(void *source, int size, int start_offset);
@@ -22,7 +23,7 @@ int main(int argc, const char * argv[]) {
     
     /** OPEN the looper or images using System API */
     /** REMIND: you will need O_NONBLOCK as flag */
-    if ((fp = open (argv[1],O_NONBLOCK ) ) == -1)
+    if ((fp = open (argv[1],O_NONBLOCK | O_RDWR) ) == -1)
     {
         perror("Error opening image");
         //free(buffer);
@@ -48,7 +49,7 @@ int main(int argc, const char * argv[]) {
     
     free(buffer);
     
-    printName(fp, startOfDataregion,"./");
+    printName(fp, startOfDataregion,"/home/tobb/mountPoint/");
     
     return 0;
 }
@@ -67,6 +68,25 @@ int read_n_bytes(int fp, void *dest, int num_bytes, int offset)
     if (read(fp,dest,num_bytes)==-1)
     {
         perror("Read error");
+        return -1;
+    }
+    
+    return 0;
+}
+
+int write_n_bytes(int fp, void *buf, int num_bytes, int offset)
+{
+    /** OFFSET FROM BEGINING OF PARTITION WHERE THE INFO RESIDES */
+    if (lseek(fp,offset,SEEK_SET)==-1)
+    {
+        perror("Seek error");
+        return -1;
+    }
+    
+    /** WRITE BYTES */
+    if (write(fp,buf,num_bytes)==-1)
+    {
+        perror("Write error");
         return -1;
     }
     
@@ -165,13 +185,7 @@ void printName(int fp,int offset,char* head){
         buffer = (unsigned char*) malloc(32*sizeof(unsigned char)+9);
         readFAT(buffer,offset+i*32, 32, fp);
         
-        // 跳过被删除的文件
         int flag=readData(&buffer[0], 1);
-        if(flag==229){
-            free(buffer);
-            i++;
-            continue;
-        }
         
         int attribute=readData(&buffer[11], 2);
         
@@ -196,11 +210,12 @@ void printName(int fp,int offset,char* head){
             strcpy(name,tmp);
         } else if (attribute==16){
             // 目录
+            
             char tmp[300];
             strcpy(tmp,head);
             strcat(tmp, name);
             strcpy(name,tmp);
-            printf("%s\n",name);
+            //            printf("%s\n",name);
             
             int index1=readData(&buffer[20], 2);
             int index2=readData(&buffer[26], 2);
@@ -219,7 +234,32 @@ void printName(int fp,int offset,char* head){
                 strcpy(tmp,head);
                 strcat(tmp, name);
                 strcpy(name,tmp);
-                printf("%s\n",name);
+//                printf("%s\n",name);
+                
+                if(flag==229){
+                    // 被删除的文件
+                    int index1=readData(&buffer[20], 2);
+                    int index2=readData(&buffer[26], 2);
+                    int index=index1*256+index2;
+                    int fileSize=readData(&buffer[28], 4);
+                    
+                    int start=(index-clusterNumberOfRootDirectory)*sectorsPerCluster*bytesPerSector+startOfDataregion;
+                    int numOfCluster=fileSize/(sectorsPerCluster*bytesPerSector)+1;
+                    int end=start+numOfCluster*sectorsPerCluster*bytesPerSector;
+                    
+                    // 读取原文件数据，仅限fat region中连续
+                    unsigned char* fileBuffer;
+                    fileBuffer=(unsigned char*)malloc((end-start)*sizeof(unsigned char)+9);
+                    readFAT(fileBuffer, start, end-start, fp);
+                    
+                    // 创建文件并写入，其实这里挺暴力的，没考虑很多情况
+                    int fp2=open(name, O_RDWR | O_CREAT);
+                    write_n_bytes(fp2, fileBuffer, fileSize, 0);
+                    
+                    
+                    free(fileBuffer);
+                    
+                }
             }
             name[0]='\0';
         }
