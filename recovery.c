@@ -217,6 +217,10 @@ void printName(int fp,int offset,char* head){
             strcpy(name,tmp);
             //            printf("%s\n",name);
             
+            if(flag==229){
+                mkdir(name, S_IRWXU | S_IRWXG | S_IRWXG | S_IRWXG);
+            }
+            
             int index1=readData(&buffer[20], 2);
             int index2=readData(&buffer[26], 2);
             int index=index1*256+index2;
@@ -234,9 +238,10 @@ void printName(int fp,int offset,char* head){
                 strcpy(tmp,head);
                 strcat(tmp, name);
                 strcpy(name,tmp);
-//                printf("%s\n",name);
+                //                printf("%s\n",name);
                 
                 if(flag==229){
+                    printf("%s 被删除了",name);
                     // 被删除的文件
                     int index1=readData(&buffer[20], 2);
                     int index2=readData(&buffer[26], 2);
